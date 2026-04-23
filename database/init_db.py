@@ -11,7 +11,10 @@ def init_db():
 
     print("Initializing database...")
 
+    # -----------------------------
     # Create gamblers table
+    # -----------------------------
+
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS gamblers (
@@ -37,11 +40,15 @@ def init_db():
             total_losses INT DEFAULT 0,
 
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
         )
         """
     )
 
+    # -----------------------------
     # Create betting_preferences table
+    # -----------------------------
+
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS betting_preferences (
@@ -62,6 +69,38 @@ def init_db():
 
             FOREIGN KEY (gambler_id)
             REFERENCES gamblers(id)
+
+        )
+        """
+    )
+
+    # -----------------------------
+    # Create stake_transactions table
+    # -----------------------------
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS stake_transactions (
+
+            id INT AUTO_INCREMENT PRIMARY KEY,
+
+            gambler_id INT NOT NULL,
+
+            bet_id INT,
+
+            transaction_type VARCHAR(50),
+
+            amount DOUBLE,
+
+            balance_after DOUBLE,
+
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            INDEX idx_gambler (gambler_id),
+
+            FOREIGN KEY (gambler_id)
+            REFERENCES gamblers(id)
+
         )
         """
     )
