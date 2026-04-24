@@ -4,6 +4,10 @@ from repositories.stake_transaction_repository import (
     StakeTransactionRepository
 )
 
+from services.gambler_profile_service import (
+    GamblerProfileService
+)
+
 from models.transaction_type import (
     TransactionType
 )
@@ -27,6 +31,10 @@ class StakeManagementService:
 
         self.repository = (
             StakeTransactionRepository()
+        )
+
+        self.gambler_service = (
+            GamblerProfileService()
         )
 
         self.monitor = StakeMonitor()
@@ -119,6 +127,14 @@ class StakeManagementService:
 
         )
 
+        self.gambler_service.update_balance(
+
+            gambler_id,
+
+            new_balance
+
+        )
+
         return new_balance
 
     # Deposit funds
@@ -164,6 +180,14 @@ class StakeManagementService:
             .DEPOSIT.value,
 
             amount,
+
+            new_balance
+
+        )
+
+        self.gambler_service.update_balance(
+
+            gambler_id,
 
             new_balance
 
@@ -222,6 +246,14 @@ class StakeManagementService:
             .WITHDRAWAL.value,
 
             -amount,
+
+            new_balance
+
+        )
+
+        self.gambler_service.update_balance(
+
+            gambler_id,
 
             new_balance
 

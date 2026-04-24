@@ -12,6 +12,10 @@ from services.betting_service import (
     BettingService
 )
 
+from services.game_session_service import (
+    GameSessionService
+)
+
 from models.transaction_type import (
     TransactionType
 )
@@ -31,6 +35,8 @@ def main():
     stake_service = StakeManagementService()
     
     betting_service = BettingService()
+    
+    game_session_service = GameSessionService()
 
     print("\n--- Create Gambler Profile ---")
 
@@ -204,6 +210,100 @@ def main():
 
     # ===================================
     # END BETTING MECHANISM
+    # ===================================
+
+    # ===================================
+    # GAME SESSION MANAGEMENT - NEW FEATURES
+    # ===================================
+    
+    print("\n--- GAME SESSION MANAGEMENT ---")
+    print("\nStart a gaming session with automatic boundary detection?")
+    print("  1. Yes - Start new session")
+    print("  2. No - Skip to legacy features")
+    
+    session_choice = input("Enter choice (1-2): ").strip()
+    
+    if session_choice == "1":
+        print("\n--- Configure Session Parameters ---")
+        
+        initial_stake = current_balance
+        upper_limit = float(input(f"Enter win threshold (current=${initial_stake:.2f}): $"))
+        lower_limit = float(input("Enter loss threshold: $"))
+        min_bet = float(input("Enter minimum bet: $"))
+        max_bet = float(input("Enter maximum bet: $"))
+        max_games = int(input("Enter maximum games per session: "))
+        
+        try:
+            # Create session parameters
+            params = game_session_service.create_session_parameters(
+                initial_stake=initial_stake,
+                upper_limit=upper_limit,
+                lower_limit=lower_limit,
+                min_bet=min_bet,
+                max_bet=max_bet,
+                max_games=max_games,
+                default_win_probability=0.5
+            )
+            
+            # Start session
+            session_result = game_session_service.start_new_session(
+                gambler_id=gambler_id,
+                parameters=params,
+                strategy_name="balanced"
+            )
+            
+            session_id = session_result['session_id']
+            print(f"\n✓ Gaming Session Started!")
+            print(f"  Session ID: {session_id}")
+            print(f"  Initial Stake: ${session_result['initial_stake']:.2f}")
+            print(f"  Win at: >= ${session_result['upper_limit']:.2f}")
+            print(f"  Stop at: <= ${session_result['lower_limit']:.2f}")
+            
+            # Play games
+            print("\n--- Play Games ---")
+            play_games = input("Play games now? (y/n): ").lower() == 'y'
+            
+            if play_games:
+                num_games = int(input("Number of games to play: "))
+                bet_amount = float(input("Bet amount per game: $"))
+                win_probability = float(input("Win probability (0.1-0.9): "))
+                
+                try:
+                    game_result = game_session_service.continue_session(
+                        session_id=session_id,
+                        num_games=num_games,
+                        bet_amounts=bet_amount,
+                        win_probabilities=win_probability
+                    )
+                    
+                    summary = game_result['session_summary']
+                    
+                    print(f"\n✓ Gaming Session Complete!")
+                    print(f"  Games Played: {summary['game_count']}")
+                    print(f"  Wins: {summary['total_wins']}")
+                    print(f"  Losses: {summary['total_losses']}")
+                    print(f"  Win Rate: {summary['win_rate_percentage']:.1f}%")
+                    print(f"  Initial Stake: ${summary['initial_stake']:.2f}")
+                    print(f"  Final Stake: ${summary['current_stake']:.2f}")
+                    print(f"  ROI: {summary['roi_percentage']:+.2f}%")
+                    print(f"  Session Status: {summary['status']}")
+                    print(f"  End Reason: {summary['end_reason']}")
+                    
+                    # Show duration tracking
+                    print(f"\n  Active Duration: {summary['active_duration_seconds']:.1f}s")
+                    print(f"  Total Duration: {summary['total_duration_seconds']:.1f}s")
+                    print(f"  Pause Events: {len(summary['pauses'])}")
+                    
+                    current_balance = summary['current_stake']
+                    
+                except Exception as e:
+                    print(f"✗ Gaming Error: {str(e)}")
+            
+        except ValueError as e:
+            print(f"✗ Session Configuration Error: {str(e)}")
+
+    # ===================================
+    # END GAME SESSION MANAGEMENT
     # ===================================
 
     # Legacy features (kept for compatibility)

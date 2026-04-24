@@ -1,23 +1,23 @@
 # repositories/betting_session_repository.py
 
 from models.betting_session import BettingSession
+from database.connection import get_connection
 import uuid
+import logging
+import json
+
+logger = logging.getLogger(__name__)
 
 
 class BettingSessionRepository:
     """
     Repository for managing betting sessions.
-    Handles persistence of session records.
+    Handles persistence of session records to database.
     """
-
-    def __init__(self):
-        """Initialize with empty session storage"""
-        self.sessions = {}  # session_id -> BettingSession
-        self.gambler_sessions = {}  # gambler_id -> [session_ids]
 
     def create(self, gambler_id, initial_stake, strategy_name="default"):
         """
-        Create and store a new betting session.
+        Create and store a new betting session to database.
         
         Args:
             gambler_id (int): Gambler's ID
@@ -28,6 +28,232 @@ class BettingSessionRepository:
             BettingSession: The created session
         """
         session_id = str(uuid.uuid4())
+
+        session = BettingSession(
+            session_id=session_id,
+            gambler_id=gambler_id,
+            initial_stake=initial_stake,
+            strategy_name=strategy_name
+        )
+
+        # Save to database
+        try:
+            connection = get_connection()
+            cursor = connection.cursor()
+
+            query = """
+            INSERT INTO betting_sessions 
+            (session_id, gambler_id, initial_stake, current_stake, 
+             strategy_name, status, total_bets, total_wins, total_losses)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+
+            cursor.execute(
+                query,
+                (session_id, gambler_id, initial_stake, initial_stake,
+                 strategy_name, 'active', 0, 0, 0)
+            )
+
+            connection.commit()
+            cursor.close()
+            connection.close()
+
+            logger.debug(f"Betting session created in database: {session_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to create betting session: {str(e)}")
+            raise
+
+        return session
+
+    def get_by_id(self, session_id):
+        """Get betting session from database by ID"""
+        try:
+            connection = get_connection()
+            cursor = connection.cursor(dictionary=True)
+
+            query = "SELECT * FROM betting_sessions WHERE session_id = %s"
+            cursor.execute(query, (session_id,))
+
+            result = cursor.fetchone()
+            cursor.close()
+            connection.close()
+
+            if result:
+                session = BettingSession(
+                    session_id=result['session_id'],
+                    gambler_id=result['gambler_id'],
+                    initial_stake=result['initial_stake'],
+                    strategy_name=result['strategy_name']
+                )
+                session.current_stake = result['current_stake']
+                session.status = result['status']
+                session.total_bets = result['total_bets']
+                session.total_wins = result['total_wins']
+                session.total_losses = result['total_losses']
+                return session
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to get betting session {session_id}: {str(e)}")
+            return None
+
+    def update(self, session):
+        """Update betting session in database"""
+        try:
+            connection = get_connection()
+            cursor = connection.cursor()
+
+            query = """
+            UPDATE betting_sessions 
+            SET current_stake = %s, status = %s, total_bets = %s, 
+                total_wins = %s, total_losses = %s, 
+                win_rate_percentage = %s, roi_percentage = %s
+            WHERE session_id = %s
+            """
+
+            win_rate = session.calculate_win_rate() if session.total_bets > 0 else 0
+            roi = session.calculate_roi() if session.initial_stake > 0 else 0
+
+            cursor.execute(
+                query,
+                (session.current_stake, session.status, session.total_bets,
+                 session.total_wins, session.total_losses, win_rate, roi,
+                 session.session_id)
+            )
+
+            connection.commit()
+            cursor.close()
+            connection.close()
+
+            logger.debug(f"Betting session updated in database: {session.session_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to update betting session: {str(e)}")
+            raise
+
+    def end_session(self, session_id):
+        """Mark session as ended in database"""
+        try:
+            connection = get_connection()
+            cursor = connection.cursor()
+
+            query = """
+            UPDATE betting_sessions 
+            SET status = 'ended', ended_at = NOW()
+            WHERE session_id = %s
+            """
+
+            cursor.execute(query, (session_id,))
+            connection.commit()
+            cursor.close()
+            connection.close()
+
+            logger.debug(f"Betting session ended in database: {session_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to end betting session: {str(e)}")
+            raise
+
+    def get_all_sessions(self):
+        """Get all betting sessions from database"""
+        try:
+            connection = get_connection()
+            cursor = connection.cursor(dictionary=True)
+
+            query = "SELECT * FROM betting_sessions ORDER BY created_at DESC"
+            cursor.execute(query)
+
+            results = cursor.fetchall()
+            cursor.close()
+            connection.close()
+
+            sessions = []
+            for row in results:
+                session = BettingSession(
+                    session_id=row['session_id'],
+                    gambler_id=row['gambler_id'],
+                    initial_stake=row['initial_stake'],
+                    strategy_name=row['strategy_name']
+                )
+                session.current_stake = row['current_stake']
+                session.status = row['status']
+                sessions.append(session)
+
+            return sessions
+
+        except Exception as e:
+            logger.error(f"Failed to get all betting sessions: {str(e)}")
+            return []
+
+    def get_by_gambler(self, gambler_id):
+        """Get all betting sessions for a gambler from database"""
+        try:
+            connection = get_connection()
+            cursor = connection.cursor(dictionary=True)
+
+            query = "SELECT * FROM betting_sessions WHERE gambler_id = %s ORDER BY created_at DESC"
+            cursor.execute(query, (gambler_id,))
+
+            results = cursor.fetchall()
+            cursor.close()
+            connection.close()
+
+            sessions = []
+            for row in results:
+                session = BettingSession(
+                    session_id=row['session_id'],
+                    gambler_id=row['gambler_id'],
+                    initial_stake=row['initial_stake'],
+                    strategy_name=row['strategy_name']
+                )
+                session.current_stake = row['current_stake']
+                session.status = row['status']
+                sessions.append(session)
+
+            return sessions
+
+        except Exception as e:
+            logger.error(f"Failed to get betting sessions for gambler {gambler_id}: {str(e)}")
+            return []
+
+    def get_active_sessions(self):
+        """Get all active betting sessions from database"""
+        try:
+            connection = get_connection()
+            cursor = connection.cursor(dictionary=True)
+
+            query = "SELECT * FROM betting_sessions WHERE status = 'active' ORDER BY created_at DESC"
+            cursor.execute(query)
+
+            results = cursor.fetchall()
+            cursor.close()
+            connection.close()
+
+            sessions = []
+            for row in results:
+                session = BettingSession(
+                    session_id=row['session_id'],
+                    gambler_id=row['gambler_id'],
+                    initial_stake=row['initial_stake'],
+                    strategy_name=row['strategy_name']
+                )
+                session.current_stake = row['current_stake']
+                session.status = row['status']
+                sessions.append(session)
+
+            return sessions
+
+        except Exception as e:
+            logger.error(f"Failed to get active betting sessions: {str(e)}")
+            return []
+
+    def get_summary(self, session_id):
+        """Get session summary from database"""
+        session = self.get_by_id(session_id)
+        if session:
+            return session.get_summary()
+        return None
 
         session = BettingSession(
             session_id=session_id,

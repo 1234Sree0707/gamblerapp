@@ -6,6 +6,7 @@ from datetime import datetime
 from models.betting_strategies import StrategyFactory
 from repositories.bet_repository import BetRepository
 from repositories.betting_session_repository import BettingSessionRepository
+from services.gambler_profile_service import GamblerProfileService
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +39,7 @@ class BettingService:
         """Initialize the betting service with repositories"""
         self.bet_repository = BetRepository()
         self.session_repository = BettingSessionRepository()
+        self.gambler_profile_service = GamblerProfileService()
 
         # Configuration
         self.min_bet = 1.0
@@ -246,6 +248,12 @@ class BettingService:
         # Settle the bet
         self.bet_repository.settle(bet_id, is_winner, new_stake)
 
+        # Update gambler balance in profile
+        self.gambler_profile_service.update_balance(
+            gambler_id,
+            new_stake
+        )
+
         logger.info(
             f"Bet settled: {bet_id}, outcome={'WIN' if is_winner else 'LOSS'}, "
             f"stake_before=${bet.stake_before}, stake_after=${new_stake}"
@@ -415,6 +423,12 @@ class BettingService:
         # End session
         session.end_session()
         self.session_repository.end_session(session.session_id)
+
+        # Update gambler balance in profile
+        self.gambler_profile_service.update_balance(
+            gambler_id,
+            current_stake
+        )
 
         logger.info(f"Session ended: {session.session_id}")
 
