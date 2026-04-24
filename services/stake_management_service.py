@@ -135,7 +135,7 @@ class StakeManagementService:
 
     ):
 
-        if amount <= 0:
+        if amount < 0:
 
             raise ValueError(
 
