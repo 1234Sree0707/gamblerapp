@@ -54,6 +54,7 @@ class Bet:
         self.outcome = BetOutcome.PENDING
         self.is_winner = None
         self.actual_winnings = 0
+        self.is_settled = False
 
         # Strategy tracking
         self.strategy_name = strategy_name or "default"
@@ -77,6 +78,7 @@ class Bet:
         self.is_winner = is_winner
         self.stake_after = stake_after
         self.settled_at = datetime.utcnow()
+        self.is_settled = True
 
         if is_winner:
             self.outcome = BetOutcome.WIN
@@ -99,6 +101,7 @@ class Bet:
             "stake_after": self.stake_after,
             "outcome": self.outcome.value if self.outcome else "pending",
             "is_winner": self.is_winner,
+            "is_settled": self.is_settled,
             "actual_winnings": self.actual_winnings,
             "strategy_name": self.strategy_name,
             "created_at": self.created_at.isoformat(),
