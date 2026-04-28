@@ -20,6 +20,11 @@ from models.transaction_type import (
     TransactionType
 )
 
+# Use Case 6: Input Validation and Error Handling
+from utils.input_validator import InputValidator
+from utils.safe_input_handler import SafeInputHandler
+from utils.validation_config import STANDARD_CONFIG
+
 
 def main():
 
@@ -29,6 +34,10 @@ def main():
 
     # Initialize database
     init_db()
+
+    # Initialize validation system
+    validator = InputValidator(STANDARD_CONFIG)
+    input_handler = SafeInputHandler(validator, max_retries=3, show_range=True)
 
     profile_service = GamblerProfileService()
 
@@ -42,40 +51,38 @@ def main():
 
     print("\nEnter gambler details:")
 
-    print(
-        "\nName: Full name of the gambler "
-        "(used for identification)"
-    )
-    name = input("Enter Name: ")
+    # Get name
+    print("\nName: Full name of the gambler (used for identification)")
+    name = input("Enter Name: ").strip()
+    
+    while not name:
+        print("✗ Name cannot be empty")
+        name = input("Enter Name: ").strip()
 
-    print(
-        "\nEmail: Contact email of the gambler"
-    )
-    email = input("Enter Email: ")
+    # Get email
+    print("\nEmail: Contact email of the gambler")
+    email = input("Enter Email: ").strip()
+    
+    while not email:
+        print("✗ Email cannot be empty")
+        email = input("Enter Email: ").strip()
 
-    print(
-        "\nInitial Stake: Starting amount of money "
-        "the gambler begins with"
-    )
-    initial_stake = float(
-        input("Enter Initial Stake: ")
-    )
+    # Get initial stake with validation
+    print("\nInitial Stake: Starting amount of money the gambler begins with")
+    try:
+        initial_stake = input_handler.get_initial_stake()
+    except (ValueError, KeyboardInterrupt):
+        print("✗ Failed to get initial stake. Using default: $100.00")
+        initial_stake = 100.0
 
-    print(
-        "\nWin Threshold: Amount at which gambler "
-        "decides to stop after winning"
-    )
-    win_threshold = float(
-        input("Enter Win Threshold: ")
-    )
-
-    print(
-        "\nLoss Threshold: Minimum amount before "
-        "gambler stops to avoid further losses"
-    )
-    loss_threshold = float(
-        input("Enter Loss Threshold: ")
-    )
+    # Get limits with validation
+    print("\nWin/Loss Thresholds: Limits for automatic session stopping")
+    try:
+        loss_threshold, win_threshold = input_handler.get_limits(initial_stake)
+    except (ValueError, KeyboardInterrupt):
+        print("✗ Failed to get limits. Using defaults")
+        loss_threshold = initial_stake * 0.5
+        win_threshold = initial_stake * 2.0
 
     gambler_id = profile_service.create_gambler(
 
@@ -92,11 +99,11 @@ def main():
     )
 
     print(
-        "\nGambler created successfully!"
+        "\n✓ Gambler created successfully!"
     )
 
     print(
-        "Gambler ID:",
+        "  Gambler ID:",
         gambler_id
     )
 
@@ -111,7 +118,7 @@ def main():
     )
 
     print(
-        "Stake initialization status:",
+        "  Stake initialization status:",
         status
     )
 
@@ -138,31 +145,35 @@ def main():
     
     if choice == "1":
         print("\n--- Place Single Bet ---")
-        bet_amount = float(input("Enter bet amount: $"))
-        
-        print("\nEnter win probability (0.1 - 0.9):")
-        win_prob = float(input("Win probability: "))
         
         try:
-            result = betting_service.place_bet(
-                gambler_id=gambler_id,
-                current_stake=current_balance,
-                bet_amount=bet_amount,
-                win_probability=win_prob,
-                strategy_name="manual"
-            )
-            
-            print("\n✓ Bet Placed Successfully!")
-            print(f"  Outcome: {result['outcome'].upper()}")
-            print(f"  Bet Amount: ${result['bet_amount']:.2f}")
-            print(f"  Winnings: ${result['winnings']:.2f}")
-            print(f"  Stake Before: ${result['stake_before']:.2f}")
-            print(f"  Stake After: ${result['stake_after']:.2f}")
-            
-            current_balance = result['stake_after']
-            
-        except ValueError as e:
-            print(f"✗ Bet Error: {str(e)}")
+            bet_amount = input_handler.get_bet_amount(current_balance)
+            probability = input_handler.get_probability()
+        except (ValueError, KeyboardInterrupt):
+            print("✗ Failed to get bet details. Skipping bet.")
+            bet_amount = None
+        
+        if bet_amount:
+            try:
+                result = betting_service.place_bet(
+                    gambler_id=gambler_id,
+                    current_stake=current_balance,
+                    bet_amount=bet_amount,
+                    win_probability=probability,
+                    strategy_name="manual"
+                )
+                
+                print("\n✓ Bet Placed Successfully!")
+                print(f"  Outcome: {result['outcome'].upper()}")
+                print(f"  Bet Amount: ${result['bet_amount']:.2f}")
+                print(f"  Winnings: ${result['winnings']:.2f}")
+                print(f"  Stake Before: ${result['stake_before']:.2f}")
+                print(f"  Stake After: ${result['stake_after']:.2f}")
+                
+                current_balance = result['stake_after']
+                
+            except ValueError as e:
+                print(f"✗ Bet Error: {str(e)}")
     
     elif choice == "2":
         print("\n--- Multiple Consecutive Bets ---")
@@ -172,14 +183,16 @@ def main():
         for i, strategy in enumerate(strategies_list, 1):
             print(f"  {i}. {strategy.upper()}")
         
-        strategy_choice = int(input("Select strategy (1-6): ")) - 1
-        strategy_name = strategies_list[strategy_choice]
-        
-        base_bet = float(input("Enter base bet amount: $"))
-        num_bets = int(input("Number of bets to place: "))
-        win_prob = float(input("Win probability per bet (0.1-0.9): "))
-        
         try:
+            strategy_choice = int(input("Select strategy (1-6): ")) - 1
+            strategy_name = strategies_list[strategy_choice]
+            
+            base_bet = input_handler.get_bet_amount(current_balance)
+            
+            num_bets = int(input("Number of bets to place: "))
+            
+            win_prob = input_handler.get_probability()
+            
             session_result = betting_service.place_consecutive_bets(
                 gambler_id=gambler_id,
                 initial_stake=current_balance,
@@ -205,7 +218,7 @@ def main():
             
             current_balance = session_result['final_stake']
             
-        except Exception as e:
+        except (ValueError, KeyboardInterrupt, IndexError) as e:
             print(f"✗ Session Error: {str(e)}")
 
     # ===================================
@@ -226,19 +239,44 @@ def main():
     if session_choice == "1":
         print("\n--- Configure Session Parameters ---")
         
-        initial_stake = current_balance
-        upper_limit = float(input(f"Enter win threshold (current=${initial_stake:.2f}): $"))
-        lower_limit = float(input("Enter loss threshold: $"))
-        min_bet = float(input("Enter minimum bet: $"))
-        max_bet = float(input("Enter maximum bet: $"))
-        max_games = int(input("Enter maximum games per session: "))
-        
         try:
+            initial_stake = current_balance
+            
+            print("\n1. Set Loss Threshold (minimum balance to stop)")
+            loss_threshold = input_handler.get_numeric_input(
+                "Enter loss threshold: $",
+                allow_empty=False
+            )
+            
+            print("\n2. Set Win Threshold (maximum balance to stop)")
+            win_threshold = input_handler.get_numeric_input(
+                "Enter win threshold: $",
+                allow_empty=False
+            )
+            
+            print("\n3. Set Bet Range")
+            min_bet = input_handler.get_numeric_input(
+                "Enter minimum bet: $",
+                allow_empty=False
+            )
+            
+            max_bet = input_handler.get_numeric_input(
+                "Enter maximum bet: $",
+                allow_empty=False
+            )
+            
+            # Validate bet range
+            if max_bet <= min_bet:
+                print("✗ Maximum bet must be greater than minimum bet")
+                raise ValueError("Invalid bet range")
+            
+            max_games = int(input("Enter maximum games per session: "))
+            
             # Create session parameters
             params = game_session_service.create_session_parameters(
                 initial_stake=initial_stake,
-                upper_limit=upper_limit,
-                lower_limit=lower_limit,
+                upper_limit=win_threshold,
+                lower_limit=loss_threshold,
                 min_bet=min_bet,
                 max_bet=max_bet,
                 max_games=max_games,
@@ -265,41 +303,47 @@ def main():
             
             if play_games:
                 num_games = int(input("Number of games to play: "))
-                bet_amount = float(input("Bet amount per game: $"))
-                win_probability = float(input("Win probability (0.1-0.9): "))
                 
                 try:
-                    game_result = game_session_service.continue_session(
-                        session_id=session_id,
-                        num_games=num_games,
-                        bet_amounts=bet_amount,
-                        win_probabilities=win_probability
-                    )
-                    
-                    summary = game_result['session_summary']
-                    
-                    print(f"\n✓ Gaming Session Complete!")
-                    print(f"  Games Played: {summary['game_count']}")
-                    print(f"  Wins: {summary['total_wins']}")
-                    print(f"  Losses: {summary['total_losses']}")
-                    print(f"  Win Rate: {summary['win_rate_percentage']:.1f}%")
-                    print(f"  Initial Stake: ${summary['initial_stake']:.2f}")
-                    print(f"  Final Stake: ${summary['current_stake']:.2f}")
-                    print(f"  ROI: {summary['roi_percentage']:+.2f}%")
-                    print(f"  Session Status: {summary['status']}")
-                    print(f"  End Reason: {summary['end_reason']}")
-                    
-                    # Show duration tracking
-                    print(f"\n  Active Duration: {summary['active_duration_seconds']:.1f}s")
-                    print(f"  Total Duration: {summary['total_duration_seconds']:.1f}s")
-                    print(f"  Pause Events: {len(summary['pauses'])}")
-                    
-                    current_balance = summary['current_stake']
-                    
-                except Exception as e:
-                    print(f"✗ Gaming Error: {str(e)}")
+                    bet_amount = input_handler.get_bet_amount(current_balance)
+                    win_probability = input_handler.get_probability()
+                except (ValueError, KeyboardInterrupt):
+                    print("✗ Failed to get game parameters. Skipping games.")
+                    bet_amount = None
+                
+                if bet_amount:
+                    try:
+                        game_result = game_session_service.continue_session(
+                            session_id=session_id,
+                            num_games=num_games,
+                            bet_amounts=bet_amount,
+                            win_probabilities=win_probability
+                        )
+                        
+                        summary = game_result['session_summary']
+                        
+                        print(f"\n✓ Gaming Session Complete!")
+                        print(f"  Games Played: {summary['game_count']}")
+                        print(f"  Wins: {summary['total_wins']}")
+                        print(f"  Losses: {summary['total_losses']}")
+                        print(f"  Win Rate: {summary['win_rate_percentage']:.1f}%")
+                        print(f"  Initial Stake: ${summary['initial_stake']:.2f}")
+                        print(f"  Final Stake: ${summary['current_stake']:.2f}")
+                        print(f"  ROI: {summary['roi_percentage']:+.2f}%")
+                        print(f"  Session Status: {summary['status']}")
+                        print(f"  End Reason: {summary['end_reason']}")
+                        
+                        # Show duration tracking
+                        print(f"\n  Active Duration: {summary['active_duration_seconds']:.1f}s")
+                        print(f"  Total Duration: {summary['total_duration_seconds']:.1f}s")
+                        print(f"  Pause Events: {len(summary['pauses'])}")
+                        
+                        current_balance = summary['current_stake']
+                        
+                    except Exception as e:
+                        print(f"✗ Gaming Error: {str(e)}")
             
-        except ValueError as e:
+        except (ValueError, KeyboardInterrupt) as e:
             print(f"✗ Session Configuration Error: {str(e)}")
 
     # ===================================
@@ -309,29 +353,23 @@ def main():
     # Legacy features (kept for compatibility)
     print("\n--- Deposit Funds ---")
 
-    print(
-        "\nDeposit Amount: Money added to the "
-        "current balance"
-    )
+    print("\nDeposit Amount: Money added to the current balance")
+    
+    try:
+        deposit_amount = input_handler.get_numeric_input(
+            "Enter Deposit Amount: $",
+            allow_empty=False
+        )
+        
+        current_balance = stake_service.deposit(
+            gambler_id,
+            current_balance,
+            deposit_amount
+        )
 
-    deposit_amount = float(
-        input("Enter Deposit Amount: ")
-    )
-
-    current_balance = stake_service.deposit(
-
-        gambler_id,
-
-        current_balance,
-
-        deposit_amount
-
-    )
-
-    print(
-        "Balance after deposit:",
-        current_balance
-    )
+        print(f"✓ Balance after deposit: ${current_balance:.2f}")
+    except (ValueError, KeyboardInterrupt):
+        print("✗ Failed to process deposit")
 
     print("\n--- Validate Stake Boundaries ---")
 
